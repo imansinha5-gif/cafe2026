@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bean & Bloom Cafe</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, sans-serif; background: #f7f3ed; color: #30251f; }
+    header { padding: 28px 7%; background: #35251f; color: white; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    header h1 { margin: 0; font-size: 25px; } header span { color: #e8bd85; }
+    .hero { padding: 42px 7%; background: linear-gradient(110deg,#e9d4b8,#f7eee2); }
+    .hero h2 { font-size: clamp(28px,5vw,46px); margin: 0 0 10px; }
+    .hero p { margin: 0; color: #66564b; }
+    main { max-width: 1150px; margin: 30px auto; padding: 0 20px; display: grid; grid-template-columns: 1.7fr 1fr; gap: 24px; }
+    h2.section { margin-top: 0; }
+    .menu-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 16px; }
+    .card, .cart { background: white; border-radius: 15px; padding: 18px; box-shadow: 0 5px 20px #3b2b1b0d; }
+    .food-icon { font-size: 35px; background: #f6eee4; border-radius: 12px; padding: 12px; display: inline-block; }
+    .card h3 { margin: 12px 0 6px; } .muted { color: #81746b; font-size: 14px; min-height: 34px; }
+    .card-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; }
+    button { border: 0; border-radius: 9px; padding: 10px 14px; background: #8a5638; color: white; cursor: pointer; font-weight: bold; }
+    button:hover { background: #68402b; } button:disabled { opacity: .5; cursor: not-allowed; }
+    .cart { align-self: start; position: sticky; top: 15px; }
+    .cart-row { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid #eee; padding: 12px 0; font-size: 14px; }
+    .qty button { padding: 3px 8px; margin: 0 3px; }
+    .total { display: flex; justify-content: space-between; font-size: 19px; font-weight: bold; margin: 18px 0; }
+    input { width: 100%; padding: 11px; border: 1px solid #ddd; border-radius: 8px; margin: 8px 0 12px; }
+    .checkout { width: 100%; } #message { margin-top: 12px; font-size: 14px; }
+    footer { text-align: center; padding: 25px; color: #81746b; }
+    @media(max-width:760px) { main { grid-template-columns: 1fr; } .cart { position: static; } header { flex-direction: column; align-items: flex-start; } }
+  </style>
+</head>
+<body>
+  <header><h1>☕ Bean <span>&</span> Bloom</h1><div>Freshly brewed. Happily served.</div></header>
+  <section class="hero"><h2>Your cozy cafe corner.</h2><p>Explore the menu, add your favourites, and place an order.</p></section>
+  <main>
+    <section>
+      <h2 class="section">Our Menu</h2>
+      <div id="menu" class="menu-grid">Loading menu...</div>
+    </section>
+    <aside class="cart">
+      <h2 class="section">Your Cart</h2>
+      <div id="cart-items">Your cart is empty.</div>
+      <div class="total"><span>Total</span><span id="total">₹0</span></div>
+      <label for="customer">Your name</label>
+      <input id="customer" maxlength="80" placeholder="Enter your name">
+      <button class="checkout" id="checkout" onclick="placeOrder()">Place Order</button>
+      <div id="message" role="status"></div>
+    </aside>
+  </main>
+  <footer>Bean & Bloom Cafe · Made with care</footer>
+<script>
+  let menuItems = [];
+  let cart = {};
+
+  async function loadMenu() {
+    const response = await fetch('/api/menu');
+    menuItems = await response.json();
+    const icons = {Coffee:'☕', Tea:'🍵', Snacks:'🥪', Dessert:'🍰'};
+    document.getElementById('menu').innerHTML = menuItems.map(item => `
+      <article class="card">
+        <div class="food-icon">${icons[item.category] || '🍽️'}</div>
+        <h3>${item.name}</h3><div class="muted">${item.description}</div>
+        <div class="card-bottom"><strong>₹${item.price}</strong>
+          <button onclick="addToCart(${item.id})">Add +</button></div>
+      </article>`).join('');
+  }
+
+  function addToCart(id) { cart[id] = (cart[id] || 0) + 1; renderCart(); }
+  function changeQty(id, amount) {
+    cart[id] = (cart[id] || 0) + amount;
+    if (cart[id] <= 0) delete cart[id];
+    renderCart();
+  }
+  function renderCart() {
+    const entries = Object.entries(cart);
+    const container = document.getElementById('cart-items');
+    if (!entries.length) container.textContent = 'Your cart is empty.';
+    else container.innerHTML = entries.map(([id, qty]) => {
+      const item = menuItems.find(x => x.id === Number(id));
+      return `<div class="cart-row"><div><strong>${item.name}</strong><br>₹${item.price} × ${qty}</div>
+        <div class="qty"><button onclick="changeQty(${id},-1)">−</button>${qty}<button onclick="changeQty(${id},1)">+</button></div></div>`;
+    }).join('');
+    const total = entries.reduce((sum, [id, qty]) =>
+      sum + menuItems.find(x => x.id === Number(id)).price * qty, 0);
+    document.getElementById('total').textContent = `₹${total}`;
+    document.getElementById('checkout').disabled = !entries.length;
+  }
+  async function placeOrder() {
+    const message = document.getElementById('message');
+    const button = document.getElementById('checkout');
+    button.disabled = true; message.textContent = 'Placing your order...';
+    try {
+      const response = await fetch('/api/orders', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          customer_name: document.getElementById('customer').value,
+          items: Object.entries(cart).map(([id, quantity]) => ({id:Number(id), quantity}))
+        })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not place order.');
+      message.textContent = `Order #${result.order.id} placed! Total: ₹${result.order.total}.`;
+      cart = {}; renderCart();
+    } catch (error) { message.textContent = error.message; }
+    finally { button.disabled = !Object.keys(cart).length; }
+  }
+  loadMenu().catch(() => document.getElementById('menu').textContent = 'Could not load menu. Please restart the server.');
+</script>
+</body>
+</html>
